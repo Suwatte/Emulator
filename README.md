@@ -1,6 +1,6 @@
 # Suwatte Runner Emulator
 
-## Basic Usage
+### Basic Usage
 
 ```typescript
 import emulate from "@suwatte/emulator";
