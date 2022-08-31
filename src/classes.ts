@@ -82,3 +82,4 @@ class NetworkClient {
 globalObject.ValueStore = ValueStore;
 globalObject.KeyChainStore = KeyChainStore;
 globalObject.NetworkClient = NetworkClient;
+globalObject.ASSETS_DIRECTORY = "stt/assets";
