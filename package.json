@@ -1,6 +1,6 @@
 {
   "name": "@suwatte/emulator",
-  "version": "1.0.5",
+  "version": "1.0.6",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
   "license": "MIT",
@@ -14,10 +14,11 @@
     "url": "https://mantton.com"
   },
   "scripts": {
-    "build": "rm -rf ./dist && tsc"
+    "build": "rm -rf ./dist && tsc",
+    "publish": ""
   },
   "dependencies": {
-    "@suwatte/daisuke": "^1.2.1",
+    "@suwatte/daisuke": "^1.2.2",
     "axios": "^0.27.2"
   },
   "devDependencies": {
