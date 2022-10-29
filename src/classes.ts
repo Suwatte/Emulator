@@ -50,12 +50,15 @@ class NetworkClient {
     if (this.requestInterceptHandler) {
       req = await this.requestInterceptHandler(req);
     }
-
+    const cookies = req.cookies?.map((v) => `${v.name}=${v.value}`).join("; ");
     const axiosResponse = await axios({
       method: req.method,
       params: req.params,
       url: req.url,
-      headers: req.headers,
+      headers: {
+        ...req.headers,
+        Cookie: cookies ?? "",
+      },
       data: req.body,
     });
 
