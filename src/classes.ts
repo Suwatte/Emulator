@@ -15,6 +15,10 @@ class ValueStore {
   async set(k: string, v: string): Promise<void> {
     this.store[k] = v;
   }
+
+  async remove(k: string): Promise<void> {
+    delete this.store[k];
+  }
 }
 
 // KeyChain Store
