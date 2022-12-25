@@ -65,7 +65,6 @@ class NetworkClient {
       },
       data: req.body,
     });
-
     let response: NetworkResponse = {
       headers: axiosResponse.headers,
       status: axiosResponse.status,
