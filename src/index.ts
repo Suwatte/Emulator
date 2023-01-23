@@ -4,7 +4,11 @@ import "./classes";
 const emulate = <T extends Source>(c: new () => T): T => {
   const target = new c();
   if (target.onSourceLoaded) {
-    target.onSourceLoaded();
+    try {
+      target.onSourceLoaded();
+    } catch (err) {
+      console.log(`ERROR: ${err}`);
+    }
   }
   return target;
 };
