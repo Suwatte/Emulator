@@ -6,10 +6,10 @@ import {
 import axios from "axios";
 let globalObject = global as any;
 
-// Value Store
-class ValueStore {
-  private store: Record<string, string> = {};
-  async get(k: string): Promise<string | null> {
+// Object Store
+class ObjectStore {
+  private store: Record<string, unknown> = {};
+  async get(k: string): Promise<unknown | null> {
     return this.store[k] ?? null;
   }
   async set(k: string, v: string): Promise<void> {
@@ -21,11 +21,11 @@ class ValueStore {
   }
 }
 
-// KeyChain Store
-class KeyChainStore {
-  private store: Record<string, string> = {};
+// Secure Store
+class SecureStore {
+  private store: Record<string, unknown> = {};
 
-  async get(k: string): Promise<string | null> {
+  async get(k: string): Promise<unknown | null> {
     return this.store[k] ?? null;
   }
   async set(k: string, v: string): Promise<void> {
@@ -85,7 +85,6 @@ class NetworkClient {
 }
 
 // Globals
-globalObject.ValueStore = ValueStore;
-globalObject.KeyChainStore = KeyChainStore;
+globalObject.ObjectStore = ObjectStore;
+globalObject.SecureStore = SecureStore;
 globalObject.NetworkClient = NetworkClient;
-globalObject.ASSETS_DIRECTORY = "stt/assets";
