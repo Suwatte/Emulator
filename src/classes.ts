@@ -61,7 +61,9 @@ class STTStore {
     if (!value) return null;
 
     if (typeof value !== "number")
-      throw new Error("ObjectStore Type Assertion failed, value is not number");
+      throw new Error(
+        "ObjectStore Type Assertion failed, value is not a number"
+      );
     return value;
   }
 
