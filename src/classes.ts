@@ -86,16 +86,6 @@ class STTStore {
     return value;
   }
 }
-class ObjectStore extends STTStore {
-  constructor() {
-    super("os");
-  }
-}
-class SecureStore extends STTStore {
-  constructor() {
-    super("ss");
-  }
-}
 
 // ERROR
 class NetworkError extends Error {
@@ -276,8 +266,8 @@ class NetworkClient {
   }
 }
 // Globals
-globalObject.ObjectStore = ObjectStore;
-globalObject.SecureStore = SecureStore;
+globalObject.ObjectStore = new STTStore("os");
+globalObject.SecureStore = new STTStore("ss");
 globalObject.NetworkClient = NetworkClient;
 globalObject.CloudflareError = CloudflareError;
 globalObject.NetworkError = NetworkError;
