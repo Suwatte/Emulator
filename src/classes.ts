@@ -1,7 +1,9 @@
 import {
   NetworkRequest,
   NetworkRequestConfig,
+  NetworkRequestTransformer,
   NetworkResponse,
+  NetworkResponseTransformer,
 } from "@suwatte/daisuke";
 import axios from "axios";
 let globalObject = global as any;
@@ -112,82 +114,143 @@ class CloudflareError extends Error {
 }
 
 // NETWORK CLIENT
-type Transformer<T> = (v: T) => Promise<T>;
-type NetworkRequestTransformer = Transformer<NetworkRequest>;
-type NetworkResponseTransformer = Transformer<NetworkResponse>;
+
 class NetworkClient {
-  transformRequest?: NetworkRequestTransformer | NetworkRequestTransformer[];
-  transformResponse?: NetworkResponseTransformer | NetworkResponseTransformer[];
+  // Transformers
+  requestTransformers: NetworkRequestTransformer[] = [];
+  responseTransformers: NetworkResponseTransformer[] = [];
+  headers = {};
+  cookies: any[] = [];
+  timeout;
+  statusValidator;
+  authorizationToken;
+  maxRetries;
+  // Rate Limiting
+  buffer: any[] = [];
+  lastRequestTime = 0;
+  requestsPerSecond = 999;
+
+  constructor(builder?: any) {
+    if (builder) {
+      this.requestTransformers = builder.requestTransformers;
+      this.responseTransformers = builder.responseTransformers;
+      this.headers = builder.headers;
+      this.cookies = builder.cookies;
+      this.timeout = builder.timeout;
+      this.statusValidator = builder.statusValidator;
+      this.authorizationToken = builder.authorizationToken;
+      this.maxRetries = builder.maxRetries;
+      this.requestsPerSecond = builder.requestsPerSecond;
+    }
+  }
+
+  combine(request: NetworkRequest) {
+    //  Request Transform
+    const RTX = [...this.requestTransformers];
+    if (request.transformRequest) {
+      if (typeof request.transformRequest === "function")
+        RTX.push(request.transformRequest);
+      else RTX.push(...request.transformRequest);
+    }
+
+    // Response Transform
+    const RTS = [...this.responseTransformers];
+    if (request.transformResponse) {
+      if (typeof request.transformResponse === "function")
+        RTS.push(request.transformResponse);
+      else RTS.push(...request.transformResponse);
+    }
+
+    const headers = {
+      ...this.headers,
+      ...request.headers,
+    };
+
+    const cookies = [...this.cookies, ...(request.cookies ?? [])];
+
+    const final = {
+      headers,
+      cookies,
+      url: request.url,
+      method: request.method ?? "GET",
+      params: request.params,
+      body: request.body,
+      timeout: request.timeout ?? this.timeout,
+      maxRetries: request.maxRetries ?? this.maxRetries,
+      transformRequest: RTX,
+      transformResponse: RTS,
+      validateStatus: request.validateStatus ?? this.statusValidator,
+    };
+
+    return final;
+  }
   async get(url: string, config: NetworkRequestConfig) {
     return this.request({ url, method: "GET", ...config });
   }
+
   async post(url: string, config: NetworkRequestConfig) {
     return this.request({ url, method: "POST", ...config });
   }
   async request(request: NetworkRequest) {
-    const factory = async <T>(r: any, methods: Transformer<T>[]) => {
-      for (const m of methods) {
-        r = await m(r);
-      }
-      return r;
-    };
-
-    //  Request Transform
-    const reqTransformers: NetworkRequestTransformer[] = [];
-    if (this.transformRequest) {
-      if (typeof this.transformRequest === "function")
-        reqTransformers.push(this.transformRequest);
-      else reqTransformers.push(...this.transformRequest);
-    }
-
-    if (request.transformRequest) {
-      if (typeof request.transformRequest === "function")
-        reqTransformers.push(request.transformRequest);
-      else reqTransformers.push(...request.transformRequest);
-    }
-
-    // Response Transform
-    const resTransformers: NetworkResponseTransformer[] = [];
-    if (this.transformResponse) {
-      if (typeof this.transformResponse === "function")
-        resTransformers.push(this.transformResponse);
-      else resTransformers.push(...this.transformResponse);
-    }
-
-    if (request.transformResponse) {
-      if (typeof request.transformResponse === "function")
-        resTransformers.push(request.transformResponse);
-      else resTransformers.push(...request.transformResponse);
-    }
+    // Mesh with Client Properties
+    request = this.combine(request);
 
     // Run Request Transformers
-    request = await factory(request, reqTransformers);
+    request = (await this.factory(
+      request,
+      request.transformRequest as NetworkRequestTransformer[]
+    )) as NetworkRequest;
 
+    if (!this.requestsPerSecond)
+      return this.dispatch(
+        request,
+        request.transformResponse as NetworkResponseTransformer[]
+      );
+
+    return this.rateLimitedRequest(() =>
+      this.dispatch(
+        request,
+        request.transformResponse as NetworkResponseTransformer[]
+      )
+    );
+  }
+
+  async dispatch(
+    request: NetworkRequest,
+    resTransformers: NetworkResponseTransformer[]
+  ): Promise<NetworkResponse> {
     // Dispatch
     const cookies = request.cookies
       ?.map((v) => `${v.name}=${v.value}`)
       .join("; ");
-    const axiosResponse = await axios({
+
+    const axResponse = await axios({
       method: request.method,
       params: request.params,
       url: request.url,
       headers: {
         ...request.headers,
-        Cookie: cookies ?? "",
+        Cookie: cookies,
       },
       data: request.body,
+      validateStatus: () => true,
     });
+
     let response: NetworkResponse = {
-      headers: axiosResponse.headers,
-      status: axiosResponse.status,
+      headers: axResponse.headers,
+      status: axResponse.status,
       data:
-        typeof axiosResponse.data === "string"
-          ? axiosResponse.data
-          : JSON.stringify(axiosResponse.data),
-      request: axiosResponse.request,
+        typeof axResponse.data === "string"
+          ? axResponse.data
+          : JSON.stringify(axResponse.data),
+      request,
     };
+
     // Run Response Transformers
-    response = await factory(response, resTransformers);
+    response = (await this.factory(
+      response,
+      resTransformers
+    )) as NetworkResponse;
 
     // Validate Status
     const defaultValidateStatus = (s: number) => s >= 200 && s < 300;
@@ -264,7 +327,51 @@ class NetworkClient {
       request: request,
     };
   }
+  async factory(r: NetworkRequest | NetworkResponse, methods: any[]) {
+    for (const m of methods) {
+      r = await m(r);
+    }
+    return r;
+  }
+  rateLimitedRequest(request: () => Promise<NetworkResponse>) {
+    return new Promise((resolve, reject) => {
+      this.buffer.push({
+        request,
+        resolve,
+        reject,
+      });
+
+      this.processBuffer();
+    });
+  }
+
+  processBuffer() {
+    if (this.buffer.length === 0) {
+      return;
+    }
+
+    const now = Date.now();
+    const timeSinceLastRequest = now - this.lastRequestTime;
+
+    if (timeSinceLastRequest >= 1000 / this.requestsPerSecond) {
+      const { request, resolve, reject }: any = this.buffer.shift();
+
+      this.lastRequestTime = now;
+
+      request().then(resolve).catch(reject);
+
+      // Recursively process the next request in the buffer
+      this.processBuffer();
+    } else {
+      // Wait until enough time has passed before processing the next request
+      setTimeout(
+        () => this.processBuffer(),
+        1000 / this.requestsPerSecond - timeSinceLastRequest
+      );
+    }
+  }
 }
+
 // Globals
 globalObject.ObjectStore = new STTStore("os");
 globalObject.SecureStore = new STTStore("ss");
